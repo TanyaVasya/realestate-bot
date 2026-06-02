@@ -1,4 +1,5 @@
 """Telegram bot entry point (long-polling worker)."""
+import asyncio
 import datetime
 import html
 import logging
@@ -141,7 +142,8 @@ async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         return
 
     comment = scraper.remove_urls(msg.text)
-    raw = scraper.scrape(url)  # never raises; falls back to URL-only data
+    # Runs a real Chrome under the hood, so do it off the event loop.
+    raw = await asyncio.to_thread(scraper.scrape, url)  # never raises
 
     # If the page was blocked and the user typed no extra info, don't ask the
     # LLM to invent fields from nothing — just use what the URL tells us.

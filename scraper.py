@@ -6,6 +6,7 @@ embed (JSON-LD, OpenGraph, title, meta description, a text snippet) and let
 Claude turn that into clean fields.
 """
 import json
+import os
 import re
 from urllib.parse import urlparse
 
@@ -64,8 +65,39 @@ GOOGLEBOT_HEADERS = {
 }
 
 
+# A persistent Chrome profile so Akamai's clearance cookies stick between
+# runs (first fetch after a reboot is a little slower, then fast).
+PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".chrome-profile")
+
+
+def _fetch_browser(url: str) -> str:
+    """Fetch via a real Chrome (patchright stealth) — beats Akamai/Kasada.
+
+    Headed but positioned off-screen so no window bothers the user. Requires
+    Google Chrome installed and a desktop session (i.e. running locally).
+    """
+    from patchright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            user_data_dir=PROFILE_DIR,
+            channel="chrome",
+            headless=False,
+            no_viewport=True,
+            args=["--window-position=-3000,-3000", "--window-size=1280,900"],
+        )
+        try:
+            page = ctx.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            # Give Akamai's JS challenge time to resolve and the listing to render.
+            page.wait_for_timeout(6000)
+            return page.content()
+        finally:
+            ctx.close()
+
+
 def _fetch_html(url: str) -> str:
-    """Plain fetch, then a Googlebot attempt, then ZenRows if configured."""
+    """Plain fetch (fast), then a real browser, then ZenRows if configured."""
     for headers in (BROWSER_HEADERS, GOOGLEBOT_HEADERS):
         try:
             resp = httpx.get(url, headers=headers, timeout=25, follow_redirects=True)
@@ -73,6 +105,14 @@ def _fetch_html(url: str) -> str:
                 return resp.text
         except httpx.HTTPError:
             pass
+
+    # Real Chrome: the reliable path for Akamai-protected sites (realestate.com.au).
+    try:
+        html = _fetch_browser(url)
+        if len(html) > 5000:
+            return html
+    except Exception:  # noqa: BLE001 - Chrome missing / no display / timeout
+        pass
 
     if config.ZENROWS_API_KEY:
         params = {"url": url, "apikey": config.ZENROWS_API_KEY, "js_render": "true"}
