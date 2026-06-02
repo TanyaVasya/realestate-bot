@@ -76,10 +76,14 @@ python bot.py
 бот живёт локально, а не в облаке. Чтобы он поднимался сам и пережил перезагрузки —
 через `launchd`.
 
-Файл `~/Library/LaunchAgents/com.tanya.realestate-bot.plist` уже настроен. Команды:
+Файл автозапуска — `deploy/com.tanya.realestate-bot.plist` (копия лежит в
+`~/Library/LaunchAgents/`). Он запускает бота под `caffeinate -i -s`, поэтому
+**пока бот работает, Mac не засыпает**. `KeepAlive` поднимает бота при падении и
+сетевых сбоях, `RunAtLoad` — при логине. Команды:
 
 ```bash
-# запустить / включить автозапуск
+# установить (один раз) и запустить
+cp deploy/com.tanya.realestate-bot.plist ~/Library/LaunchAgents/
 launchctl load -w ~/Library/LaunchAgents/com.tanya.realestate-bot.plist
 
 # остановить
@@ -89,8 +93,12 @@ launchctl unload ~/Library/LaunchAgents/com.tanya.realestate-bot.plist
 tail -f ~/realestate-bot/bot.log
 ```
 
-Условие: Mac включён и ты залогинена (Chrome нужен рабочий стол). Уснул/выключен —
-бот не работает; включишь — поднимется сам.
+Условия «всегда работает»:
+- Mac **включён**, ты **залогинена** (Chrome нужен рабочий стол).
+- Желательно **в розетке** — `caffeinate -s` держит от сна на питании от сети.
+- Если закрыть крышку — ноут всё равно уснёт (clamshell). Для 24/7 держи крышку
+  открытой или подключи внешний монитор. Выключен — бот не работает; включишь —
+  поднимется сам.
 
 ---
 
