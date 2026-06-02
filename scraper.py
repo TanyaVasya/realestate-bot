@@ -58,14 +58,21 @@ def parse_url(url: str) -> dict:
     }
 
 
+GOOGLEBOT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
 def _fetch_html(url: str) -> str:
-    """Plain fetch first; fall back to ZenRows if configured."""
-    try:
-        resp = httpx.get(url, headers=BROWSER_HEADERS, timeout=25, follow_redirects=True)
-        if resp.status_code == 200 and len(resp.text) > 2000:
-            return resp.text
-    except httpx.HTTPError:
-        pass
+    """Plain fetch, then a Googlebot attempt, then ZenRows if configured."""
+    for headers in (BROWSER_HEADERS, GOOGLEBOT_HEADERS):
+        try:
+            resp = httpx.get(url, headers=headers, timeout=25, follow_redirects=True)
+            if resp.status_code == 200 and len(resp.text) > 2000:
+                return resp.text
+        except httpx.HTTPError:
+            pass
 
     if config.ZENROWS_API_KEY:
         params = {"url": url, "apikey": config.ZENROWS_API_KEY, "js_render": "true"}

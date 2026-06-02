@@ -28,8 +28,9 @@ def _today() -> str:
 def _card(rec: dict) -> str:
     """Format a stored listing as a Telegram message."""
     line = lambda label, key: f"{label}: {rec[key]}" if rec.get(key) else None
+    title = rec.get("address") or rec.get("suburb") or "Объявление"
     parts = [
-        f"🏠 #{rec['id']}  {rec.get('address') or rec.get('title') or 'Объявление'}",
+        f"🏠 #{rec['id']}  {title}",
         line("📍 Район", "suburb"),
         line("💰 Цена", "price"),
         line("🛏 Спальни", "bedrooms"),

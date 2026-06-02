@@ -66,9 +66,13 @@ def extract_listing(raw: dict, comment: str = "") -> dict:
             ),
         }],
     )
+    placeholders = {"unknown", "<unknown>", "n/a", "na", "none", "-", "?"}
     for block in resp.content:
         if block.type == "tool_use":
-            fields = {k: (v or "") for k, v in block.input.items()}
+            fields = {}
+            for k, v in block.input.items():
+                v = (v or "").strip()
+                fields[k] = "" if v.lower() in placeholders else v
             # Backfill from the URL when the model left things blank.
             for key, val in raw.get("url_fields", {}).items():
                 if key in ("property_type", "suburb") and not fields.get(key):
