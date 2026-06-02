@@ -114,6 +114,17 @@ def add(record: dict) -> dict:
     return record
 
 
+def delete(listing_id: int) -> dict | None:
+    """Delete a listing row by id. Returns the deleted record, or None."""
+    ws = _worksheet()
+    rows = ws.get_all_records()
+    for idx, row in enumerate(rows):
+        if str(row.get("id")) == str(listing_id):
+            ws.delete_rows(idx + 2)  # +1 header, +1 to 1-based
+            return row
+    return None
+
+
 def append_note(listing_id: int, text: str) -> bool:
     """Append a line to a listing's notes, preserving what's already there."""
     for row in get_all():

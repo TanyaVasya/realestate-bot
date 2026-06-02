@@ -135,6 +135,8 @@ You have access to their shared database of listings (provided below as JSON). W
 
 When they want to record something ("mark #3 as viewed, we loved it 9/10", "reject the Surry Hills one", "add a note that it's near the station"), call update_listing. Status values: new, interested, shortlisted, viewed, rejected, applied. When they say they viewed a place, set viewed=yes and viewed_date to today if they give a date.
 
+When they clearly want to remove/delete a listing from the database ("delete #3", "убери квартиру в Zetland", "remove this one"), call delete_listing. Deletion is permanent, so only do it on a clear delete request, not for "reject"/"not interested" (those are status changes via update_listing).
+
 Be brief and friendly. Refer to listings by their id and suburb/address so it's clear which one you mean.
 
 FORMATTING: your replies are shown in Telegram, which does NOT render Markdown. Write plain text only. Never use **, __, backticks, or # headers — they show up as literal characters. For structure use emoji and simple dashes (-) for lists. Keep it short and scannable."""
@@ -167,6 +169,18 @@ UPDATE_TOOL = {
     },
 }
 
+DELETE_TOOL = {
+    "name": "delete_listing",
+    "description": "Permanently delete a listing from the database. Use only on a clear delete request.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer", "description": "The listing id to delete"},
+        },
+        "required": ["id"],
+    },
+}
+
 
 def chat(user_text: str, today: str) -> str:
     """Answer a chat message, possibly updating the database via tools."""
@@ -188,7 +202,7 @@ def chat(user_text: str, today: str) -> str:
                 "text": SYSTEM,
                 "cache_control": {"type": "ephemeral"},
             }],
-            tools=[UPDATE_TOOL],
+            tools=[UPDATE_TOOL, DELETE_TOOL],
             messages=messages,
         )
 
@@ -199,12 +213,18 @@ def chat(user_text: str, today: str) -> str:
         messages.append({"role": "assistant", "content": resp.content})
         results = []
         for tu in tool_uses:
-            fields = {k: v for k, v in tu.input.items() if k != "id"}
-            ok = sheets.update(int(tu.input["id"]), fields)
+            listing_id = int(tu.input["id"])
+            if tu.name == "delete_listing":
+                deleted = sheets.delete(listing_id)
+                content = f"deleted #{listing_id}" if deleted else f"no listing with id {listing_id}"
+            else:
+                fields = {k: v for k, v in tu.input.items() if k != "id"}
+                ok = sheets.update(listing_id, fields)
+                content = "updated" if ok else f"no listing with id {listing_id}"
             results.append({
                 "type": "tool_result",
                 "tool_use_id": tu.id,
-                "content": "updated" if ok else f"no listing with id {tu.input['id']}",
+                "content": content,
             })
         messages.append({"role": "user", "content": results})
 
