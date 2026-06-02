@@ -32,13 +32,20 @@ SLUG_RE = re.compile(
 )
 
 
-def find_listing_url(text: str) -> str | None:
-    """Return the first real-estate URL found in a message, if any."""
+def find_listing_urls(text: str) -> list[str]:
+    """Return all real-estate URLs found in a message, in order."""
+    found = []
     for match in URL_RE.findall(text or ""):
         host = urlparse(match).netloc.lower().lstrip("www.")
         if any(h in host for h in config.LISTING_HOSTS):
-            return match.rstrip(").,")
-    return None
+            found.append(match.rstrip(").,"))
+    return found
+
+
+def find_listing_url(text: str) -> str | None:
+    """Return the first real-estate URL found in a message, if any."""
+    urls = find_listing_urls(text)
+    return urls[0] if urls else None
 
 
 def remove_urls(text: str) -> str:

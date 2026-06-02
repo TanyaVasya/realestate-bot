@@ -22,6 +22,9 @@ log = logging.getLogger("realestate-bot")
 # "requested a viewing" can be attached to it as a note.
 LAST_LISTING: dict[int, dict] = {}
 
+# Only one real-Chrome fetch at a time (shared profile + gentler on the site).
+SCRAPE_LOCK = asyncio.Lock()
+
 
 def _today() -> str:
     return datetime.date.today().isoformat()
@@ -84,10 +87,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = msg.text
     chat = update.effective_chat
 
-    # 1) A real-estate link -> scrape + add to the database.
-    url = scraper.find_listing_url(text)
-    if url:
-        await _process_listing(update, context, url)
+    # 1) One or more real-estate links -> scrape each + add to the database.
+    if scraper.find_listing_urls(text):
+        await _process_message(update, context, text)
         return
 
     # 2) Addressed to the bot (mention / reply / DM) -> full conversation.
@@ -125,7 +127,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
 
 
-async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
+async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    """Handle a message that contains one or more listing links.
+
+    Line-based: text on a link's own line is that listing's address/comment;
+    a line with no link is a note for the most recent listing in the message.
+    """
+    msg = update.effective_message
+    chat = update.effective_chat
+    current = None  # the listing most recently added in THIS message
+
+    for line in text.splitlines():
+        urls = scraper.find_listing_urls(line)
+        if urls:
+            comment = scraper.remove_urls(line).strip()
+            for url in urls:
+                stored = await _add_listing(update, context, url, comment)
+                comment = ""  # the typed comment belongs to the first link only
+                if stored:
+                    current = stored
+        else:
+            note = line.strip()
+            target = current or LAST_LISTING.get(chat.id)
+            if note and target and sheets.append_note(int(target["id"]), note):
+                await msg.reply_text(
+                    f"📝 Записала к #{target['id']}: {note}",
+                    disable_web_page_preview=True,
+                )
+
+
+async def _add_listing(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       url: str, comment: str) -> dict | None:
+    """Add a single listing and reply with its card. Returns the stored record."""
     msg = update.effective_message
     chat = update.effective_chat
     await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
@@ -139,11 +172,11 @@ async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             f"статус: {existing.get('status', 'new')}.",
             disable_web_page_preview=True,
         )
-        return
+        return existing
 
-    comment = scraper.remove_urls(msg.text)
-    # Runs a real Chrome under the hood, so do it off the event loop.
-    raw = await asyncio.to_thread(scraper.scrape, url)  # never raises
+    # Runs a real Chrome under the hood, so do it off the event loop, one at a time.
+    async with SCRAPE_LOCK:
+        raw = await asyncio.to_thread(scraper.scrape, url)  # never raises
 
     # If the page was blocked and the user typed no extra info, don't ask the
     # LLM to invent fields from nothing — just use what the URL tells us.
@@ -169,12 +202,11 @@ async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     stored = sheets.add(record)
     LAST_LISTING[chat.id] = stored
 
-    text = _card(stored)
+    card = _card(stored)
     if raw.get("blocked"):
-        text += "\n\n<i>⚠️ Сайт не дал открыть страницу — заполнила по ссылке. Детали можно дописать в чате.</i>"
-    await msg.reply_text(
-        text, parse_mode=ParseMode.HTML, disable_web_page_preview=True
-    )
+        card += "\n\n<i>⚠️ Сайт не дал открыть страницу — заполнила по ссылке. Детали можно дописать в чате.</i>"
+    await msg.reply_text(card, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    return stored
 
 
 def main() -> None:
