@@ -142,11 +142,17 @@ async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     comment = scraper.remove_urls(msg.text)
     raw = scraper.scrape(url)  # never raises; falls back to URL-only data
-    try:
-        fields = llm.extract_listing(raw, comment)
-    except Exception:  # noqa: BLE001
-        log.exception("extract failed")
-        fields = {**raw.get("url_fields", {}), "notes": comment}
+
+    # If the page was blocked and the user typed no extra info, don't ask the
+    # LLM to invent fields from nothing — just use what the URL tells us.
+    if raw.get("blocked") and not comment:
+        fields = dict(raw.get("url_fields", {}))
+    else:
+        try:
+            fields = llm.extract_listing(raw, comment)
+        except Exception:  # noqa: BLE001
+            log.exception("extract failed")
+            fields = {**raw.get("url_fields", {}), "notes": comment}
 
     record = {
         **fields,
