@@ -6,3 +6,4 @@ venv/
 .venv/
 
 .chrome-profile/
+bot.log
