@@ -135,7 +135,9 @@ You have access to their shared database of listings (provided below as JSON). W
 
 When they want to record something ("mark #3 as viewed, we loved it 9/10", "reject the Surry Hills one", "add a note that it's near the station"), call update_listing. Status values: new, interested, shortlisted, viewed, rejected, applied. When they say they viewed a place, set viewed=yes and viewed_date to today if they give a date.
 
-Be brief and friendly. Refer to listings by their id and suburb/address so it's clear which one you mean."""
+Be brief and friendly. Refer to listings by their id and suburb/address so it's clear which one you mean.
+
+FORMATTING: your replies are shown in Telegram, which does NOT render Markdown. Write plain text only. Never use **, __, backticks, or # headers — they show up as literal characters. For structure use emoji and simple dashes (-) for lists. Keep it short and scannable."""
 
 UPDATE_TOOL = {
     "name": "update_listing",
