@@ -1,9 +1,10 @@
 """Telegram bot entry point (long-polling worker)."""
 import datetime
+import html
 import logging
 
 from telegram import Update
-from telegram.constants import ChatAction
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 import config
@@ -26,24 +27,52 @@ def _today() -> str:
 
 
 def _card(rec: dict) -> str:
-    """Format a stored listing as a Telegram message."""
-    line = lambda label, key: f"{label}: {rec[key]}" if rec.get(key) else None
-    title = rec.get("address") or rec.get("suburb") or "Объявление"
-    parts = [
-        f"🏠 #{rec['id']}  {title}",
-        line("📍 Район", "suburb"),
-        line("💰 Цена", "price"),
-        line("🛏 Спальни", "bedrooms"),
-        line("🛁 Санузлы", "bathrooms"),
-        line("🚗 Паркинг", "parking"),
-        line("🏷 Тип", "property_type"),
-        line("📅 Инспекция", "inspection"),
-        line("🧑‍💼 Агент", "agent"),
-        line("✨ Особенности", "features"),
-        f"📌 Статус: {rec.get('status', 'new')}",
-        rec.get("url", ""),
-    ]
-    return "\n".join(p for p in parts if p)
+    """Format a stored listing as a clean HTML Telegram message."""
+    def esc(key):
+        return html.escape(str(rec.get(key, "")).strip())
+
+    # Title: address if we have it, else "Type in Suburb", else suburb.
+    addr, suburb, ptype = esc("address"), esc("suburb"), esc("property_type")
+    if addr:
+        title = addr
+    elif ptype and suburb:
+        title = f"{ptype} · {suburb}"
+    else:
+        title = suburb or "Объявление"
+
+    lines = [f"🏠 <b>#{rec['id']} · {title}</b>"]
+
+    # Show suburb on its own line only if it isn't already the title.
+    if suburb and title != suburb and suburb not in title:
+        lines.append(f"📍 {suburb}")
+
+    # Compact metrics row: only the parts we actually have.
+    metrics = []
+    if esc("price"):
+        metrics.append(f"💰 {esc('price')}")
+    if esc("bedrooms"):
+        metrics.append(f"🛏 {esc('bedrooms')}")
+    if esc("bathrooms"):
+        metrics.append(f"🛁 {esc('bathrooms')}")
+    if esc("parking"):
+        metrics.append(f"🚗 {esc('parking')}")
+    if metrics:
+        lines.append("  ".join(metrics))
+
+    if esc("inspection"):
+        lines.append(f"📅 {esc('inspection')}")
+    if esc("agent"):
+        lines.append(f"🧑‍💼 {esc('agent')}")
+    if esc("features"):
+        lines.append(f"✨ {esc('features')}")
+
+    # Status + a short clickable link (strip the long campaign query string).
+    clean_url = rec.get("url", "").split("?")[0]
+    status = esc("status") or "new"
+    link = f'<a href="{html.escape(clean_url)}">Открыть объявление</a>' if clean_url else ""
+    lines.append(f"📌 {status}   {link}".strip())
+
+    return "\n".join(lines)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -134,8 +163,10 @@ async def _process_listing(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     text = _card(stored)
     if raw.get("blocked"):
-        text += "\n\n⚠️ Сайт не дал открыть страницу — заполнила по ссылке. Детали можно дописать в чате."
-    await msg.reply_text(text, disable_web_page_preview=True)
+        text += "\n\n<i>⚠️ Сайт не дал открыть страницу — заполнила по ссылке. Детали можно дописать в чате.</i>"
+    await msg.reply_text(
+        text, parse_mode=ParseMode.HTML, disable_web_page_preview=True
+    )
 
 
 def main() -> None:
