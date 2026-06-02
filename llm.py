@@ -139,7 +139,7 @@ Be brief and friendly. Refer to listings by their id and suburb/address so it's 
 
 UPDATE_TOOL = {
     "name": "update_listing",
-    "description": "Update tracking fields of a listing in the shared database.",
+    "description": "Update any field of a listing in the shared database. Set only the fields the user mentions.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -148,7 +148,18 @@ UPDATE_TOOL = {
             "our_rating": {"type": "string", "description": "Rating, e.g. '8/10'"},
             "viewed": {"type": "string", "enum": ["yes", "no"]},
             "viewed_date": {"type": "string"},
-            "notes": {"type": "string", "description": "Free-text review/notes to set"},
+            "notes": {"type": "string", "description": "Free-text review/notes to set (replaces existing notes)"},
+            "address": {"type": "string"},
+            "suburb": {"type": "string"},
+            "price": {"type": "string", "description": "e.g. '$750 per week'"},
+            "bedrooms": {"type": "string"},
+            "bathrooms": {"type": "string"},
+            "parking": {"type": "string"},
+            "property_type": {"type": "string"},
+            "land_size": {"type": "string"},
+            "inspection": {"type": "string", "description": "Open-home / inspection time"},
+            "agent": {"type": "string"},
+            "features": {"type": "string"},
         },
         "required": ["id"],
     },

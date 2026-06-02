@@ -39,7 +39,8 @@ COLUMNS = [
     "image_url",
 ]
 
-# Fields the conversational interface is allowed to change.
+# Fields the conversational interface is allowed to change. Everything
+# except the bookkeeping columns (id, date_added, added_by, url, source).
 EDITABLE = {
     "status",
     "our_rating",
@@ -49,6 +50,15 @@ EDITABLE = {
     "address",
     "suburb",
     "price",
+    "bedrooms",
+    "bathrooms",
+    "parking",
+    "property_type",
+    "land_size",
+    "inspection",
+    "agent",
+    "features",
+    "image_url",
 }
 
 
