@@ -3,7 +3,9 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# override=True so the local .env wins over stale/empty shell variables.
+# On cloud hosting there is no .env file, so real env vars are used as-is.
+load_dotenv(override=True)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
