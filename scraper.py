@@ -8,6 +8,7 @@ Claude turn that into clean fields.
 import json
 import os
 import re
+import threading
 from urllib.parse import urlparse
 
 import httpx
@@ -76,6 +77,10 @@ GOOGLEBOT_HEADERS = {
 # runs (first fetch after a reboot is a little slower, then fast).
 PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".chrome-profile")
 
+# Only one Chrome at a time: the profile dir can't be shared, and it's gentler
+# on the site. Guards every caller (link flow and chat-triggered refresh).
+_BROWSER_LOCK = threading.Lock()
+
 
 def _fetch_browser(url: str) -> str:
     """Fetch via a real Chrome (patchright stealth) — beats Akamai/Kasada.
@@ -85,7 +90,7 @@ def _fetch_browser(url: str) -> str:
     """
     from patchright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
+    with _BROWSER_LOCK, sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
             channel="chrome",

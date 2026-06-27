@@ -106,7 +106,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         clean = text.replace(f"@{bot_username}", "").strip() if bot_username else text
         await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
         try:
-            reply = llm.chat(clean, _today())
+            reply = await asyncio.to_thread(llm.chat, clean, _today())
         except Exception as exc:  # noqa: BLE001 - surface errors to the user
             log.exception("chat failed")
             reply = f"Упс, не получилось: {exc}"

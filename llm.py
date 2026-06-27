@@ -4,6 +4,7 @@ import json
 from anthropic import Anthropic
 
 import config
+import scraper
 import sheets
 
 client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
@@ -140,6 +141,8 @@ When they want to record something ("mark #3 as viewed, we loved it 9/10", "reje
 
 When they clearly want to remove/delete a listing from the database ("delete #3", "убери квартиру в Zetland", "remove this one"), call delete_listing. Deletion is permanent, so only do it on a clear delete request, not for "reject"/"not interested" (those are status changes via update_listing).
 
+You CAN re-check a listing's current details on its website. When they ask to refresh/recheck a listing or whether something changed ("проверь, не изменилась ли цена у #15", "обнови данные #3", "актуальна ли инспекция?"), call refresh_listing with that id — it reopens the page and updates the stored fields. So never say you have no internet access; you can fetch a listing again via its saved link.
+
 Be brief and friendly. Refer to listings by their id and suburb/address so it's clear which one you mean.
 
 FORMATTING: your replies are shown in Telegram, which does NOT render Markdown. Write plain text only. Never use **, __, backticks, or # headers — they show up as literal characters. For structure use emoji and simple dashes (-) for lists. Keep it short and scannable."""
@@ -184,6 +187,36 @@ DELETE_TOOL = {
     },
 }
 
+REFRESH_TOOL = {
+    "name": "refresh_listing",
+    "description": "Reopen a listing's webpage and update its stored details (price, inspection, beds, etc.). Use when the user wants to re-check current data.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer", "description": "The listing id to refresh"},
+        },
+        "required": ["id"],
+    },
+}
+
+
+def _refresh(listing_id: int) -> str:
+    """Re-scrape a listing by its saved URL and update changed fields."""
+    row = next((r for r in sheets.get_all() if str(r.get("id")) == str(listing_id)), None)
+    if not row:
+        return f"no listing with id {listing_id}"
+    if not row.get("url"):
+        return f"listing #{listing_id} has no saved url"
+    raw = scraper.scrape(row["url"])
+    if raw.get("blocked"):
+        return f"could not open #{listing_id} — site blocked the request"
+    fields = extract_listing(raw)
+    updates = {k: v for k, v in fields.items() if v and k in sheets.EDITABLE}
+    if not updates:
+        return f"refreshed #{listing_id}, nothing new found"
+    sheets.update(int(listing_id), updates)
+    return f"refreshed #{listing_id}: " + json.dumps(updates, ensure_ascii=False)
+
 
 def chat(user_text: str, today: str) -> str:
     """Answer a chat message, possibly updating the database via tools."""
@@ -205,7 +238,7 @@ def chat(user_text: str, today: str) -> str:
                 "text": SYSTEM,
                 "cache_control": {"type": "ephemeral"},
             }],
-            tools=[UPDATE_TOOL, DELETE_TOOL],
+            tools=[UPDATE_TOOL, DELETE_TOOL, REFRESH_TOOL],
             messages=messages,
         )
 
@@ -220,6 +253,8 @@ def chat(user_text: str, today: str) -> str:
             if tu.name == "delete_listing":
                 deleted = sheets.delete(listing_id)
                 content = f"deleted #{listing_id}" if deleted else f"no listing with id {listing_id}"
+            elif tu.name == "refresh_listing":
+                content = _refresh(listing_id)
             else:
                 fields = {k: v for k, v in tu.input.items() if k != "id"}
                 ok = sheets.update(listing_id, fields)
