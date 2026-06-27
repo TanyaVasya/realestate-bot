@@ -7,3 +7,4 @@ venv/
 
 .chrome-profile/
 bot.log
+known_chats.json

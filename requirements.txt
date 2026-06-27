@@ -1,4 +1,6 @@
-python-telegram-bot>=21.6
+python-telegram-bot[job-queue]>=21.6
+apscheduler>=3.10
+tzdata>=2024.1
 anthropic>=0.40
 gspread>=6.1
 google-auth>=2.34

@@ -2,7 +2,10 @@
 import asyncio
 import datetime
 import html
+import json
 import logging
+import os
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.constants import ChatAction, ParseMode
@@ -24,6 +27,26 @@ LAST_LISTING: dict[int, dict] = {}
 
 # Only one real-Chrome fetch at a time (shared profile + gentler on the site).
 SCRAPE_LOCK = asyncio.Lock()
+
+# When the daily auto-check runs and where to report it.
+DAILY_CHECK_TIME = datetime.time(hour=9, minute=0, tzinfo=ZoneInfo("Australia/Sydney"))
+CHATS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "known_chats.json")
+
+
+def _load_chats() -> set[int]:
+    try:
+        with open(CHATS_FILE) as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def _remember_chat(chat_id: int) -> None:
+    chats = _load_chats()
+    if chat_id not in chats:
+        chats.add(chat_id)
+        with open(CHATS_FILE, "w") as f:
+            json.dump(sorted(chats), f)
 
 
 def _today() -> str:
@@ -86,6 +109,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     text = msg.text
     chat = update.effective_chat
+    _remember_chat(chat.id)  # so the daily auto-check knows where to report
 
     # 1) One or more real-estate links -> scrape each + add to the database.
     if scraper.find_listing_urls(text):
@@ -209,10 +233,80 @@ async def _add_listing(update: Update, context: ContextTypes.DEFAULT_TYPE,
     return stored
 
 
+# Fields worth reporting when they change during the daily check.
+_WATCHED = [("price", "💰 Цена"), ("inspection", "📅 Инспекция")]
+
+
+def _recheck_all() -> list[tuple[dict, dict]]:
+    """Re-scrape every active listing; update changed fields. Runs in a thread.
+
+    Returns a list of (listing_row, {field: (old, new)}) for reported changes.
+    """
+    changes = []
+    for row in sheets.get_all():
+        if str(row.get("status", "")).lower() == "rejected" or not row.get("url"):
+            continue
+        try:
+            raw = scraper.scrape(row["url"])
+            if raw.get("blocked"):
+                continue
+            fields = llm.extract_listing(raw)
+        except Exception:  # noqa: BLE001 - skip this one, keep going
+            log.exception("recheck failed for #%s", row.get("id"))
+            continue
+
+        # Update any changed descriptive field; report the watched ones.
+        updates, reported = {}, {}
+        for key, value in fields.items():
+            if value and key in sheets.EDITABLE and value != str(row.get(key, "")):
+                updates[key] = value
+        for key, _label in _WATCHED:
+            if key in updates:
+                reported[key] = (str(row.get(key, "")), updates[key])
+        if updates:
+            sheets.update(int(row["id"]), updates)
+        if reported:
+            changes.append((row, reported))
+    return changes
+
+
+async def daily_check(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Daily: re-check active listings and report price/inspection changes."""
+    chats = _load_chats()
+    if not chats:
+        return
+    log.info("daily check started")
+    changes = await asyncio.to_thread(_recheck_all)
+    if not changes:
+        log.info("daily check: no changes")
+        return  # stay quiet on no-change days
+
+    lines = ["🔄 <b>Ежедневная проверка — что изменилось:</b>", ""]
+    for row, reported in changes:
+        name = html.escape(row.get("address") or row.get("suburb") or "объявление")
+        lines.append(f"🏠 #{row['id']} · {name}")
+        for key, label in _WATCHED:
+            if key in reported:
+                old, new = reported[key]
+                old = html.escape(old or "—")
+                lines.append(f"{label}: {old} → <b>{html.escape(new)}</b>")
+        lines.append("")
+    message = "\n".join(lines).strip()
+
+    for chat_id in chats:
+        try:
+            await context.bot.send_message(
+                chat_id, message, parse_mode=ParseMode.HTML, disable_web_page_preview=True
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("failed to post daily check to %s", chat_id)
+
+
 def main() -> None:
     app = Application.builder().token(config.TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    log.info("Bot started (polling).")
+    app.job_queue.run_daily(daily_check, time=DAILY_CHECK_TIME, name="daily_check")
+    log.info("Bot started (polling). Daily check at %s.", DAILY_CHECK_TIME)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
