@@ -28,6 +28,7 @@ EXTRACT_TOOL = {
             "inspection": {"type": "string", "description": "Inspection / open-home times if listed"},
             "agent": {"type": "string", "description": "Agency or agent name"},
             "features": {"type": "string", "description": "Short comma-separated list of notable features"},
+            "market_status": {"type": "string", "description": "Sale/lease state of the property as shown on the page: one of 'available', 'under offer', 'sold', 'leased', 'deposit taken'. Use 'sold' if the URL contains /sold/ or the page says Sold; 'leased' for a leased rental. Default 'available' if it is clearly still listed."},
             "notes": {"type": "string", "description": "Any comment the user typed alongside the link (e.g. 'requested an inspection', 'asked to view tomorrow 5:30'). Empty if none."},
         },
         "required": ["address"],

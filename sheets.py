@@ -37,6 +37,7 @@ COLUMNS = [
     "viewed_date",
     "notes",
     "image_url",
+    "market_status",
 ]
 
 # Fields the conversational interface is allowed to change. Everything
@@ -59,6 +60,7 @@ EDITABLE = {
     "agent",
     "features",
     "image_url",
+    "market_status",
 }
 
 
